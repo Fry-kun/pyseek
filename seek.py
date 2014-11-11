@@ -16,22 +16,29 @@
 
 import usb.core
 import usb.util
-import sys
 import Tkinter
 from PIL import Image, ImageTk
 import numpy
 from scipy.misc import toimage
+import sys, os, time
 
+
+# find our Seek Thermal device  289d:0010
+dev = usb.core.find(idVendor=0x289d, idProduct=0x0010)
+if not dev: raise ValueError('Device not found')
+
+def send_msg(bmRequestType, bRequest, wValue=0, wIndex=0, data_or_wLength=None, timeout=None):
+    assert (dev.ctrl_transfer(bmRequestType, bRequest, wValue, wIndex, data_or_wLength, timeout) == len(data_or_wLength))
+
+# alias method to make code easier to read
+receive_msg = dev.ctrl_transfer
 
 def deinit():
     '''Deinit the device'''
     msg = '\x00\x00'
     for i in range(3):
-        assert dev.ctrl_transfer(0x41, 0x3C, 0, 0, msg) == len(msg)
+        send_msg(0x41, 0x3C, 0, 0, msg)
 
-# find our Seek Thermal device  289d:0010
-dev = usb.core.find(idVendor=0x289d, idProduct=0x0010)
-if not dev: raise ValueError('Device not found')
 
 # set the active configuration. With no arguments, the first configuration will be the active one
 dev.set_configuration()
@@ -48,104 +55,67 @@ assert ep is not None
 # Setup device
 try:
     msg = '\x01'
-    assert dev.ctrl_transfer(0x41, 0x54, 0, 0, msg) == len(msg)
+    send_msg(0x41, 0x54, 0, 0, msg)
 except Exception as e:
     deinit()
     msg = '\x01'
-    assert dev.ctrl_transfer(0x41, 0x54, 0, 0, msg) == len(msg)
+    send_msg(0x41, 0x54, 0, 0, msg)
 
 #  Some day we will figure out what all this init stuff is and
 #  what the returned values mean.
 
-msg = '\x00\x00'
-assert dev.ctrl_transfer(0x41, 0x3C, 0, 0, msg) == len(msg)
-
-ret1 = dev.ctrl_transfer(0xC1, 0x4E, 0, 0, 4)
-ret2 = dev.ctrl_transfer(0xC1, 0x36, 0, 0, 12)
-
+send_msg(0x41, 0x3C, 0, 0, '\x00\x00')
+ret1 = receive_msg(0xC1, 0x4E, 0, 0, 4)
 #print ret1
+ret2 = receive_msg(0xC1, 0x36, 0, 0, 12)
 #print ret2
 
-#
-
-msg = '\x20\x00\x30\x00\x00\x00'
-assert dev.ctrl_transfer(0x41, 0x56, 0, 0, msg) == len(msg)
-
-ret3 = dev.ctrl_transfer(0xC1, 0x58, 0, 0, 0x40)
+send_msg(0x41, 0x56, 0, 0, '\x20\x00\x30\x00\x00\x00')
+ret3 = receive_msg(0xC1, 0x58, 0, 0, 0x40)
 #print ret3
 
-#
-
-msg = '\x20\x00\x50\x00\x00\x00'
-assert dev.ctrl_transfer(0x41, 0x56, 0, 0, msg) == len(msg)
-
-ret4 = dev.ctrl_transfer(0xC1, 0x58, 0, 0, 0x40)
+send_msg(0x41, 0x56, 0, 0, '\x20\x00\x50\x00\x00\x00')
+ret4 = receive_msg(0xC1, 0x58, 0, 0, 0x40)
 #print ret4
 
-#
-
-msg = '\x0C\x00\x70\x00\x00\x00'
-assert dev.ctrl_transfer(0x41, 0x56, 0, 0, msg) == len(msg)
-
-ret5 = dev.ctrl_transfer(0xC1, 0x58, 0, 0, 0x18)
+send_msg(0x41, 0x56, 0, 0, '\x0C\x00\x70\x00\x00\x00')
+ret5 = receive_msg(0xC1, 0x58, 0, 0, 0x18)
 #print ret5
 
-#
-
-msg = '\x06\x00\x08\x00\x00\x00'
-assert dev.ctrl_transfer(0x41, 0x56, 0, 0, msg) == len(msg)
-
-ret6 = dev.ctrl_transfer(0xC1, 0x58, 0, 0, 0x0C)
+send_msg(0x41, 0x56, 0, 0, '\x06\x00\x08\x00\x00\x00')
+ret6 = receive_msg(0xC1, 0x58, 0, 0, 0x0C)
 #print ret6
 
-#
-
-msg = '\x08\x00'
-assert dev.ctrl_transfer(0x41, 0x3E, 0, 0, msg) == len(msg)
-
-ret7 = dev.ctrl_transfer(0xC1, 0x3D, 0, 0, 2)
+send_msg(0x41, 0x3E, 0, 0, '\x08\x00')
+ret7 = receive_msg(0xC1, 0x3D, 0, 0, 2)
 #print ret7
 
-#
-
-msg = '\x08\x00'
-assert dev.ctrl_transfer(0x41, 0x3E, 0, 0, msg) == len(msg)
-msg = '\x01\x00'
-assert dev.ctrl_transfer(0x41, 0x3C, 0, 0, msg) == len(msg)
-
-ret8 = dev.ctrl_transfer(0xC1, 0x3D, 0, 0, 2)
+send_msg(0x41, 0x3E, 0, 0, '\x08\x00')
+send_msg(0x41, 0x3C, 0, 0, '\x01\x00')
+ret8 = receive_msg(0xC1, 0x3D, 0, 0, 2)
 #print ret8
 
-
-
-root = Tkinter.Tk()
-root.bind("<Escape>", lambda e: root.quit())
-root.geometry('+%d+%d' % (100,100))
-old_label_image = None
 im2arrF = None
-
-#cnv = Tkinter.Canvas(root, width=100, height=100)
-#cnv.pack()
-#wnd = cnv.create_window(0,0)
-
 def get_image():
     global im2arrF
     while True:
         # Send read frame request
-        msg = '\xC0\x7E\x00\x00'
-        assert dev.ctrl_transfer(0x41, 0x53, 0, 0, msg) == len(msg)
+        send_msg(0x41, 0x53, 0, 0, '\xC0\x7E\x00\x00')
 
-        ret9  = dev.read(0x81, 0x3F60, 1000)
-        ret9 += dev.read(0x81, 0x3F60, 1000)
-        ret9 += dev.read(0x81, 0x3F60, 1000)
-        ret9 += dev.read(0x81, 0x3F60, 1000)
+        try:
+            ret9  = dev.read(0x81, 0x3F60, 1000)
+            ret9 += dev.read(0x81, 0x3F60, 1000)
+            ret9 += dev.read(0x81, 0x3F60, 1000)
+            ret9 += dev.read(0x81, 0x3F60, 1000)
+        except usb.USBError as e:
+            sys.exit()
 
         #  Let's see what type of frame it is
         #  1 is a Normal frame, 3 is a Calibration frame
         #  6 may be a pre-calibration frame
         #  5, 10 other... who knows.
         status = ret9[20]
-        print ('%5d'*21 ) % tuple([ret9[x] for x in range(21)])
+        #print ('%5d'*21 ) % tuple([ret9[x] for x in range(21)])
 
         if status == 1:
             #  Convert the raw calibration data to a string array
@@ -172,26 +142,39 @@ def get_image():
             
             return disp_img
 
+
+root = Tkinter.Tk()
+root.title('Seek Thermal camera')
+root.bind("<Escape>", lambda e: root.quit())
+#root.geometry('+%d+%d' % (208,156))
+
 label_image = Tkinter.Label(root)
 label_image.pack()
 
-def show_frame():
-    global old_label_image
-    disp_img = get_image()
+fps_t = 0
+fps_f = 0
+
+def show_frame(first=False):
+    global fps_t, fps_f
     
-    root.geometry('%dx%d' % (disp_img.size[0], disp_img.size[1]))
+    disp_img = get_image()
+    if first: root.geometry('%dx%d' % (disp_img.size[0], disp_img.size[1]))
     tkpi = ImageTk.PhotoImage(disp_img)
-    #label_image = Tkinter.Label(root, image=tkpi)
     label_image.imgtk = tkpi
     label_image.configure(image=tkpi)
     label_image.place(x=0, y=0, width=disp_img.size[0], height=disp_img.size[1])
-    #root.title(f)
-    #if old_label_image is not None:
-    #    old_label_image.destroy()
-    #old_label_image = label_image
-    label_image.after(1, show_frame)
+    
+    now = int(time.time())
+    fps_f += 1
+    if fps_t == 0:
+        fps_t = now
+    elif fps_t < now:
+        print '\rFPS: %.2f' % (1.0 * fps_f / (now-fps_t)),
+        sys.stdout.flush()
+        fps_t = now
+        fps_f = 0
 
-    #cnv.create_image(0, 0, image=tkpi)
+    label_image.after(1, show_frame)    # after 1ms, run show_frame again
 
-show_frame()
-root.mainloop() # wait until user clicks the window
+show_frame(first=True)
+root.mainloop() # UI has control until user presses <<Escape>>
